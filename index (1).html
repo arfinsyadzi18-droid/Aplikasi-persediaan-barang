@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Persediaan Barang PRO</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial;background:#0f0f0f;color:#fff}
+header{background:#111;padding:15px;text-align:center;font-size:22px;border-bottom:2px solid #00adb5;position:relative}
+header button{position:absolute;right:15px;top:12px;background:#ff5252;border:none;padding:8px 12px;border-radius:6px;color:#fff;cursor:pointer}
+.container{max-width:1000px;margin:auto;padding:15px}
+.card{background:#1c1c1c;padding:15px;border-radius:12px;margin-bottom:15px}
+.dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+input,select,button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:8px;background:#2a2a2a;color:#fff}
+button{background:#00adb5;font-weight:bold;cursor:pointer}
+button:hover{background:#02c7cf}
+.item{background:#2b2b2b;padding:12px;border-radius:10px;margin-top:10px;display:flex;justify-content:space-between}
+.low{color:#ff6363;font-size:12px}
+.btns button{width:auto;margin-left:5px;padding:6px 10px;font-size:12px}
+table{width:100%;border-collapse:collapse}
+th,td{border-bottom:1px solid #333;padding:6px;font-size:13px}
+#loginBox{position:fixed;inset:0;background:#0f0f0f;display:flex;align-items:center;justify-content:center;z-index:9999}
+#loginBox .box{background:#1c1c1c;padding:25px;border-radius:12px;width:320px}
+@media(max-width:600px){.item{flex-direction:column;gap:10px}}
+</style>
+</head>
+<body>
+
+<div id="loginBox">
+  <div class="box">
+    <h2 style="text-align:center">🔐 Login</h2>
+    <input id="loginUser" placeholder="Username">
+    <input id="loginPass" type="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <p style="font-size:12px;color:#aaa;margin-top:10px">
+      Admin: admin / 12345<br>
+      Staff: staff / 12345
+    </p>
+  </div>
+</div>
+
+<header>
+  <i class="fa fa-boxes"></i> Persediaan Barang PRO
+  <button onclick="logout()">Logout</button>
+</header>
+
+<div class="container">
+<div class="dashboard">
+  <div class="card">Total Barang<br><b id="tb">0</b></div>
+  <div class="card">Total Stok<br><b id="ts">0</b></div>
+  <div class="card">Stok Menipis<br><b id="sm">0</b></div>
+  <div class="card">Nilai Aset<br><b id="na">Rp 0</b></div>
+</div>
+
+<div class="card">
+<h3>Tambah Barang</h3>
+<input id="nama" placeholder="Nama">
+<input id="kategori" placeholder="Kategori">
+<input id="lokasi" placeholder="Lokasi/Gudang">
+<input id="stok" type="number" placeholder="Stok">
+<input id="harga" type="number" placeholder="Harga">
+<button onclick="tambah()">Tambah</button>
+</div>
+
+<div class="card">
+<input id="cari" placeholder="Cari..." onkeyup="render()">
+<select onchange="sortData(this.value)">
+  <option value="">Urutkan</option>
+  <option value="stokAsc">Stok Terendah</option>
+  <option value="stokDesc">Stok Tertinggi</option>
+  <option value="nama">Nama A-Z</option>
+</select>
+</div>
+
+<div id="list"></div>
+
+<div class="card">
+<h3>Riwayat Aktivitas</h3>
+<table>
+<thead><tr><th>Waktu</th><th>Barang</th><th>Aksi</th><th>Jumlah</th></tr></thead>
+<tbody id="log"></tbody>
+</table>
+</div>
+
+<div class="card">
+<button onclick="exportCSV()">Export CSV</button>
+<button onclick="backup()">Backup JSON</button>
+<input type="file" onchange="restore(this.files[0])">
+<button onclick="undo()">Undo Hapus</button>
+</div>
+</div>
+
+<script>
+const users=[{u:"admin",p:"12345",role:"admin"},{u:"staff",p:"12345",role:"staff"}];
+let session=JSON.parse(localStorage.getItem("session"))||null;
+function login(){
+ let u=loginUser.value,p=loginPass.value;
+ let user=users.find(x=>x.u===u&&x.p===p);
+ if(!user)return alert("Login gagal");
+ session=user;localStorage.setItem("session",JSON.stringify(session));
+ document.getElementById("loginBox").style.display="none";cekRole();
+}
+function logout(){localStorage.removeItem("session");location.reload();}
+if(session)document.getElementById("loginBox").style.display="none";
+
+let data=JSON.parse(localStorage.getItem("data"))||[];
+let logs=JSON.parse(localStorage.getItem("logs"))||[];
+let last=null;
+function save(){localStorage.setItem("data",JSON.stringify(data));localStorage.setItem("logs",JSON.stringify(logs));}
+function logAksi(n,a,j){logs.unshift({w:new Date().toLocaleString(),n,a,j});save();}
+function tambah(){
+ let n=nama.value.trim(),k=kategori.value,l=lokasi.value;
+ let s=parseInt(stok.value),h=parseInt(harga.value)||0;
+ if(!n||isNaN(s))return alert("Data tidak valid");
+ data.push({n,k,l,s,h});logAksi(n,"Tambah",s);
+ nama.value=kategori.value=lokasi.value=stok.value=harga.value="";
+ render();
+}
+function render(){
+ let f=cari.value.toLowerCase();
+ list.innerHTML="";
+ let tb=0,ts=0,sm=0,na=0;
+ data.filter(d=>d.n.toLowerCase().includes(f)).forEach((d,i)=>{
+  tb++;ts+=d.s;na+=d.s*d.h;if(d.s<=3)sm++;
+  list.innerHTML+=`<div class="item"><div><b>${d.n}</b> (${d.k}) - ${d.l}<br>Stok: ${d.s} ${d.s<=3?'<span class="low">Menipis</span>':''}</div>
+  <div class="btns"><button onclick="masuk(${i})">+</button><button onclick="keluar(${i})">-</button><button class="hapusBtn" onclick="hapus(${i})">Hapus</button></div></div>`;
+ });
+ document.getElementById("tb").innerText=tb;
+ document.getElementById("ts").innerText=ts;
+ document.getElementById("sm").innerText=sm;
+ document.getElementById("na").innerText="Rp "+na.toLocaleString();
+ logRender();cekRole();save();
+}
+function masuk(i){let j=+prompt("Jumlah masuk");if(j){data[i].s+=j;logAksi(data[i].n,"Masuk",j);render();}}
+function keluar(i){let j=+prompt("Jumlah keluar");if(j){data[i].s=Math.max(0,data[i].s-j);logAksi(data[i].n,"Keluar",j);render();}}
+function hapus(i){last=data[i];logAksi(data[i].n,"Hapus",data[i].s);data.splice(i,1);render();}
+function undo(){if(last){data.push(last);last=null;render();}}
+function sortData(t){
+ if(t=="stokAsc")data.sort((a,b)=>a.s-b.s);
+ if(t=="stokDesc")data.sort((a,b)=>b.s-a.s);
+ if(t=="nama")data.sort((a,b)=>a.n.localeCompare(b.n));
+ render();
+}
+function logRender(){
+ log.innerHTML="";
+ logs.slice(0,20).forEach(l=>{
+  log.innerHTML+=`<tr><td>${l.w}</td><td>${l.n}</td><td>${l.a}</td><td>${l.j}</td></tr>`;
+ });
+}
+function cekRole(){
+ if(session&&session.role==="staff"){
+  document.querySelectorAll(".hapusBtn").forEach(b=>b.style.display="none");
+ }
+}
+function exportCSV(){
+ let c="Nama,Kategori,Lokasi,Stok,Harga\n";
+ data.forEach(d=>c+=`${d.n},${d.k},${d.l},${d.s},${d.h}\n`);
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([c]));
+ a.download="persediaan.csv";a.click();
+}
+function backup(){
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([JSON.stringify(data)]));
+ a.download="backup.json";a.click();
+}
+function restore(f){
+ let r=new FileReader();
+ r.onload=e=>{data=JSON.parse(e.target.result);render();};
+ r.readAsText(f);
+}
+render();
+</script>
+</body>
+</html>
